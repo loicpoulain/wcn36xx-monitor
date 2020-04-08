@@ -1,0 +1,31 @@
+#!/bin/sh
+set -e
+
+# There is a known firmware issue with wcn3620 causing
+# the firmware to sporadically not forward authentication
+# packets (submitted through DXE). A workaround consist in
+# reseting the interface to reload the firmware.
+
+# we monitor wireless events
+command="iw event"
+
+# interface to monitor
+iface="wlan0"
+
+# string to trigger the workaround
+trigger1="*${iface}*auth*timed*out"
+
+wifi_reset() {
+	echo "Timeout detected, reseting ${iface}"
+	ifconfig ${iface} down
+	sleep 1
+	ifconfig ${iface} up	
+}
+
+stdbuf -oL ${command} |
+while IFS= read -r line; do
+	case "$line" in
+		${trigger1}) 	wifi_reset  ;;
+    		*)
+	esac
+done
