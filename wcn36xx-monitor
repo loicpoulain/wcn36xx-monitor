@@ -16,16 +16,36 @@ iface="wlan0"
 trigger1="*${iface}*auth*timed*out"
 
 wifi_reset() {
-	echo "Timeout detected, reseting ${iface}"
+	# is it wcn36xx ?
+	wcn36xx=$(grep wcn36xx /sys/class/net/${iface}/device/uevent || true)
+	if [ -z ${wcn36xx} ]; then
+		echo "${iface} is not wcn36xx"
+		return
+	fi
+
+	echo "Resetting ${iface}"
+
+	# Announce it in klog
+	echo "$0: firmware bug detected, resetting ${iface}" > /dev/kmsg
+
+	# Stop interface
 	ifconfig ${iface} down
-	sleep 1
-	ifconfig ${iface} up	
+
+	# Reset remote proc to reload the wcnss firmware
+	echo stop  > $(dirname /sys/devices/platform/soc/*.wcnss/remoteproc/remoteproc*/state)/state
+	echo start  > $(dirname /sys/devices/platform/soc/*.wcnss/remoteproc/remoteproc*/state)/state
+
+	# Interface should already be up, but just in case...
+	sleep 5
+	ifconfig ${iface} up
 }
 
-stdbuf -oL ${command} |
-while IFS= read -r line; do
-	case "$line" in
-		${trigger1}) 	wifi_reset  ;;
-    		*)
-	esac
+while true; do
+	stdbuf -oL ${command} |
+	while IFS= read -r line; do
+		case "$line" in
+			${trigger1}) 	wifi_reset  ;;
+			*)
+		esac
+	done
 done
